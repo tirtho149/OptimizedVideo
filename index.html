@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiva Loan Pitch Analysis</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    // Icons
+    const AlertCircle = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    );
+
+    const CheckCircle = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+      </svg>
+    );
+
+    const Loader2 = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+      </svg>
+    );
+
+    const ChevronLeft = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    );
+
+    const ChevronRight = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    );
+
+    const SustainabilityForm = () => {
+      const [currentPage, setCurrentPage] = useState(0);
+      const [evaluatorId, setEvaluatorId] = useState('');
+      const [status, setStatus] = useState({ type: '', message: '' });
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [assignedPitches, setAssignedPitches] = useState([]);
+      const [pitchesContent, setPitchesContent] = useState([]);
+      const [fadeState, setFadeState] = useState('visible');
+      
+      const [samplesData, setSamplesData] = useState(Array(5).fill(null).map(() => ({
+        economicCredibility: '', environmentalCredibility: '', socialCredibility: '',
+        economicEmotionalAppeal: '', environmentalEmotionalAppeal: '', socialEmotionalAppeal: '',
+        economicLogic: '', environmentalLogic: '', socialLogic: '',
+        economicTiming: '', environmentalTiming: '', socialTiming: ''
+      })));
+
+      // IMPORTANT: Replace this with your actual Google Apps Script Web App URL
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUfVuVcpDBYfL8knhicPyeT8N5D4mKUtOPbAAi3YGc3eyiFFnm5cTDxoU8I5Y-aMYY/exec';
+
+      const assessmentCategories = {
+        'Credibility': 'Appeals based on source expertise, trustworthiness, and authority',
+        'Emotional Appeal': 'Appeals to emotions, values, and personal connections',
+        'Logic': 'Appeals based on rational arguments, data, and evidence',
+        'Timing': 'Strategic timing of message delivery for maximum impact'
+      };
+
+      const sustainabilityCategories = {
+        'Economic': 'Financial viability, cost-effectiveness, and economic benefits',
+        'Environmental': 'Ecological impact, resource conservation, and environmental protection',
+        'Social': 'Community welfare, equity, and social responsibility'
+      };
+
+      const ratingDescriptions = {
+        '1': 'Highly ineffective',
+        '2': 'Somewhat ineffective',
+        '3': 'Somewhat effective',
+        '4': 'Highly effective'
+      };
+
+      // Load pitch content from GitHub Pages data directory or API
+      const loadPitchContent = useCallback(async (pitchIds) => {
+        const contents = [];
+        for (const pitchId of pitchIds) {
+          try {
+            // Try to load from data folder (if you have JSON files)
+            const response = await fetch(`./data/${pitchId}.json`);
+            if (response.ok) {
+              const data = await response.json();
+              contents.push(data);
+            } else {
+              // Fallback to placeholder
+              contents.push({ 
+                Name: `Pitch ${pitchId}`, 
+                description: 'Pitch description will be loaded here.',
+                image: '' 
+              });
+            }
+          } catch (error) {
+            console.error(`Error loading ${pitchId}:`, error);
+            contents.push({ 
+              Name: `Pitch ${pitchId}`, 
+              description: 'Pitch description will be loaded here.',
+              image: '' 
+            });
+          }
+        }
+        setPitchesContent(contents);
+      }, []);
+
+      // Load saved state from localStorage on mount
+      useEffect(() => {
+        const loadSavedState = async () => {
+          setIsLoading(true);
+          try {
+            const stored = localStorage.getItem('assignedPitches');
+            const storedEmail = localStorage.getItem('evaluatorEmail');
+            
+            if (stored && storedEmail) {
+              const pitchIds = JSON.parse(stored);
+              setAssignedPitches(pitchIds);
+              setEvaluatorId(storedEmail);
+              await loadPitchContent(pitchIds);
+            }
+          } catch (error) {
+            console.error('Error loading saved state:', error);
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        
+        loadSavedState();
+      }, [loadPitchContent]);
+
+      const getNewPitches = async (email) => {
+        try {
+          const response = await fetch(`${APPS_SCRIPT_URL}?action=getAvailablePitches&email=${encodeURIComponent(email)}`);
+          const data = await response.json();
+          
+          if (data.success && data.pitchIds && data.pitchIds.length === 5) {
+            setAssignedPitches(data.pitchIds);
+            localStorage.setItem('assignedPitches', JSON.stringify(data.pitchIds));
+            localStorage.setItem('evaluatorEmail', email);
+            await loadPitchContent(data.pitchIds);
+            return true;
+          } else {
+            setStatus({ type: 'error', message: data.message || 'Failed to get pitches. Please try again.' });
+            return false;
+          }
+        } catch (error) {
+          console.error('Error fetching pitches:', error);
+          setStatus({ type: 'error', message: 'Failed to connect to server. Please try again.' });
+          return false;
+        }
+      };
+
+      const handleSampleChange = (sampleIndex, field, value) => {
+        const newSamplesData = [...samplesData];
+        newSamplesData[sampleIndex][field] = value;
+        setSamplesData(newSamplesData);
+      };
+
+      const validateEvaluatorPage = () => {
+        if (!evaluatorId.trim()) {
+          setStatus({ type: 'error', message: 'Please enter your email address' });
+          return false;
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(evaluatorId)) {
+          setStatus({ type: 'error', message: 'Please enter a valid email address' });
+          return false;
+        }
+        return true;
+      };
+
+      const validateCurrentSample = () => {
+        const sampleIndex = currentPage - 1;
+        const sample = samplesData[sampleIndex];
+        const emptyFields = Object.entries(sample).filter(([_, value]) => !value);
+        
+        if (emptyFields.length > 0) {
+          setStatus({ type: 'error', message: `Please complete all ratings for Pitch ${currentPage}` });
+          return false;
+        }
+        return true;
+      };
+
+      const handleNext = async () => {
+        setStatus({ type: '', message: '' });
+        
+        if (currentPage === 0) {
+          if (validateEvaluatorPage()) {
+            setIsLoading(true);
+            const success = await getNewPitches(evaluatorId);
+            setIsLoading(false);
+            if (success) {
+              setCurrentPage(1);
+            }
+          }
+        } else if (currentPage < 5) {
+          if (validateCurrentSample()) {
+            setFadeState('hidden');
+            setTimeout(() => {
+              setCurrentPage(currentPage + 1);
+              setFadeState('visible');
+            }, 300);
+          }
+        }
+      };
+
+      const handleBack = () => {
+        setStatus({ type: '', message: '' });
+        if (currentPage > 0) {
+          setFadeState('hidden');
+          setTimeout(() => {
+            setCurrentPage(currentPage - 1);
+            setFadeState('visible');
+          }, 300);
+        }
+      };
+
+      const handleSubmitAll = async () => {
+        if (!validateCurrentSample()) return;
+
+        setIsSubmitting(true);
+        setStatus({ type: '', message: '' });
+
+        try {
+          const submissionData = {
+            action: 'submitRatings',
+            evaluatorId: evaluatorId,
+            pitchIds: assignedPitches,
+            ratings: samplesData.map((sample, index) => ({
+              pitchId: assignedPitches[index],
+              sampleNumber: index + 1,
+              ratings: {
+                credibility: {
+                  economic: sample.economicCredibility,
+                  environmental: sample.environmentalCredibility,
+                  social: sample.socialCredibility
+                },
+                emotionalAppeal: {
+                  economic: sample.economicEmotionalAppeal,
+                  environmental: sample.environmentalEmotionalAppeal,
+                  social: sample.socialEmotionalAppeal
+                },
+                logic: {
+                  economic: sample.economicLogic,
+                  environmental: sample.environmentalLogic,
+                  social: sample.socialLogic
+                },
+                timing: {
+                  economic: sample.economicTiming,
+                  environmental: sample.environmentalTiming,
+                  social: sample.socialTiming
+                }
+              }
+            })),
+            timestamp: new Date().toISOString()
+          };
+
+          const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(submissionData)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            setStatus({ 
+              type: 'success', 
+              message: 'All 5 loan pitches submitted successfully! Thank you for your analysis.' 
+            });
+            
+            localStorage.removeItem('assignedPitches');
+            localStorage.removeItem('evaluatorEmail');
+            
+            setTimeout(() => {
+              setCurrentPage(0);
+              setEvaluatorId('');
+              setAssignedPitches([]);
+              setPitchesContent([]);
+              setSamplesData(Array(5).fill(null).map(() => ({
+                economicCredibility: '', environmentalCredibility: '', socialCredibility: '',
+                economicEmotionalAppeal: '', environmentalEmotionalAppeal: '', socialEmotionalAppeal: '',
+                economicLogic: '', environmentalLogic: '', socialLogic: '',
+                economicTiming: '', environmentalTiming: '', socialTiming: ''
+              })));
+              setStatus({ type: '', message: '' });
+            }, 3000);
+          } else {
+            setStatus({ type: 'error', message: result.message || 'Failed to submit. Please try again.' });
+          }
+        } catch (error) {
+          console.error('Submission error:', error);
+          setStatus({ type: 'error', message: 'Failed to submit. Please try again.' });
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      if (isLoading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+            <div className="text-center">
+              <Loader2 />
+              <p className="mt-4 text-gray-600">Loading pitches...</p>
+            </div>
+          </div>
+        );
+      }
+
+      if (currentPage === 0) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 md:p-8">
+            <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-8">
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                Kiva Loan Pitch Analysis
+              </h1>
+              <p className="text-gray-600 mb-6">
+                This activity is designed to help you apply key marketing principles by analyzing real-world loan pitches from the microlending platform Kiva. Each pitch presents a case for funding a small business, using different persuasive strategies—such as logical reasoning, emotional appeals, credibility, urgency, and clarity—to connect with potential lenders.
+              </p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-lg font-semibold text-gray-800 mb-3">
+                    Write your email below:
+                  </label>
+                  <input
+                    type="email"
+                    value={evaluatorId}
+                    onChange={(e) => setEvaluatorId(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="w-full p-4 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                  />
+                </div>
+
+                <div className="bg-blue-50 p-6 rounded-lg">
+                  <h3 className="font-semibold text-lg mb-2">Assessment Scale:</h3>
+                  <ul className="list-disc list-inside space-y-2 text-gray-700">
+                    <li><strong>4 - Highly effective</strong></li>
+                    <li><strong>3 - Somewhat effective</strong></li>
+                    <li><strong>2 - Somewhat ineffective</strong></li>
+                    <li><strong>1 - Highly ineffective</strong></li>
+                  </ul>
+                  <p className="mt-4 text-gray-700">You will evaluate 5 different loan pitches using these criteria.</p>
+                </div>
+
+                {status.message && (
+                  <div className={`flex items-start gap-2 p-4 rounded-lg ${
+                    status.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                  }`}>
+                    <div className="flex-shrink-0 mt-0.5">
+                      {status.type === 'success' ? <CheckCircle /> : <AlertCircle />}
+                    </div>
+                    <span>{status.message}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleNext}
+                  disabled={isLoading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 />
+                      Loading Pitches...
+                    </>
+                  ) : (
+                    <>
+                      Start Analysis
+                      <ChevronRight />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const sampleIndex = currentPage - 1;
+      const currentSample = samplesData[sampleIndex];
+      const currentPitch = pitchesContent[sampleIndex] || {};
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 md:p-8">
+          <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-800">
+                    Pitch {currentPage} of 5
+                  </h1>
+                  <p className="text-gray-600">Email: {evaluatorId}</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-600 mb-1">Progress</div>
+                  <div className="text-2xl font-bold text-blue-600">{currentPage}/5</div>
+                </div>
+              </div>
+              
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(currentPage / 5) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Pitch Display Section */}
+            <div className={`mb-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg transition-opacity duration-300 ${fadeState === 'visible' ? 'opacity-100' : 'opacity-0'}`}>
+              {currentPitch.image && (
+                <div className="mb-4">
+                  <img 
+                    src={currentPitch.image} 
+                    alt={currentPitch.Name || 'Pitch image'}
+                    className="w-full max-h-96 object-cover rounded-lg shadow-md"
+                  />
+                </div>
+              )}
+              <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                {currentPitch.Name || 'Loading...'}
+              </h2>
+              <p className="text-gray-700 text-lg leading-relaxed">
+                {currentPitch.description || 'Loading pitch description...'}
+              </p>
+            </div>
+
+            <p className="text-gray-600 mb-6">
+              Use the following four-point scale to assess each pitch based on the persuasive strategies used.
+            </p>
+
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border-2 border-gray-300 p-4 text-left font-semibold">
+                      Assessment Category
+                    </th>
+                    {Object.entries(sustainabilityCategories).map(([category, description]) => (
+                      <th key={category} className="border-2 border-gray-300 p-4 text-center relative group">
+                        <div className="font-semibold mb-1 cursor-help">{category}</div>
+                        <div className="absolute left-1/2 transform -translate-x-1/2 top-full mt-2 w-64 bg-gray-800 text-white text-xs p-3 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                          {description}
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 border-8 border-transparent border-b-gray-800"></div>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {['Credibility', 'Emotional Appeal', 'Logic', 'Timing'].map((category) => (
+                    <tr key={category} className="hover:bg-gray-50">
+                      <td className="border-2 border-gray-300 p-4 font-medium bg-gray-50 relative group">
+                        <div className="font-semibold text-lg cursor-help">{category}</div>
+                        <div className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 w-72 bg-gray-800 text-white text-sm p-3 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                          {assessmentCategories[category]}
+                          <div className="absolute right-full top-1/2 transform -translate-y-1/2 border-8 border-transparent border-r-gray-800"></div>
+                        </div>
+                      </td>
+                      {['economic', 'environmental', 'social'].map((susCategory) => {
+                        const fieldName = `${susCategory}${category.replace(/\s+/g, '')}`;
+                        return (
+                          <td key={susCategory} className="border-2 border-gray-300 p-4">
+                            <select
+                              value={currentSample[fieldName] || ''}
+                              onChange={(e) => handleSampleChange(sampleIndex, fieldName, e.target.value)}
+                              className="w-full p-2 border-2 border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Select rating...</option>
+                              {Object.entries(ratingDescriptions).map(([value, label]) => (
+                                <option key={value} value={value}>{value} - {label}</option>
+                              ))}
+                            </select>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {status.message && (
+              <div className={`flex items-start gap-2 p-4 rounded-lg mb-6 ${
+                status.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              }`}>
+                <div className="flex-shrink-0 mt-0.5">
+                  {status.type === 'success' ? <CheckCircle /> : <AlertCircle />}
+                </div>
+                <span>{status.message}</span>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <button
+                onClick={handleBack}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <ChevronLeft />
+                Back
+              </button>
+              
+              {currentPage < 5 ? (
+                <button
+                  onClick={handleNext}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  Next Pitch
+                  <ChevronRight />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmitAll}
+                  disabled={isSubmitting}
+                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 />
+                      Submitting All Pitches...
+                    </>
+                  ) : (
+                    'Submit All Pitches'
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<SustainabilityForm />, document.getElementById('root'));
+  </script>
+</body>
+</html>
